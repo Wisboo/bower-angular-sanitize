@@ -227,7 +227,9 @@ function $SanitizeProvider() {
   // Regular Expressions for parsing tags and attributes
   var SURROGATE_PAIR_REGEXP = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g,
     // Match everything outside of normal chars and " (quote character)
-    NON_ALPHANUMERIC_REGEXP = /([^#-~ |!])/g;
+    NON_ALPHANUMERIC_REGEXP = /([^#-~ |!])/g,
+    YOUTUBE_REGEX = /^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/,
+    VIMEO_REGEX = /(https|http)?:\/\/(?:www.|player.)?vimeo.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|video\/|)(\d+)(?:$|\/|\?)/;
 
 
   // Good source of info about elements and attributes
@@ -236,7 +238,7 @@ function $SanitizeProvider() {
 
   // Safe Void Elements - HTML5
   // http://dev.w3.org/html5/spec/Overview.html#void-elements
-  var voidElements = toMap('area,br,col,hr,img,wbr');
+  var voidElements = toMap('area,br,col,hr,img,wbr,input,iframe');
 
   // Elements that you can, intentionally, leave open (and which close themselves)
   // http://dev.w3.org/html5/spec/Overview.html#optional-tags
@@ -489,6 +491,121 @@ function $SanitizeProvider() {
       replace(/>/g, '&gt;');
   }
 
+  var trim = (function() {
+    // native trim is way faster: http://jsperf.com/angular-trim-test
+    // but IE doesn't have it... :-(
+    // TODO: we should move this into IE/ES5 polyfill
+    if (!String.prototype.trim) {
+      return function(value) {
+        return angular.isString(value) ? value.replace(/^\s\s*/, '').replace(/\s\s*$/, '') : value;
+      };
+    }
+    return function(value) {
+      return angular.isString(value) ? value.trim() : value;
+    };
+  })();
+
+  // Custom logic for accepting certain style options only - textAngular
+  // Currently allows only the color, background-color, text-align, float, width and height attributes
+  // all other attributes should be easily done through classes.
+  function validStyles(styleAttr){
+  	var result = '';
+  	var styleArray = styleAttr.split(';');
+  	angular.forEach(styleArray, function(value){
+  		var v = value.split(':');
+  		if(v.length == 2){
+  			var key = trim(angular.lowercase(v[0]));
+  			var value = trim(angular.lowercase(v[1]));
+  			if(
+  				(key === 'color' || key === 'background-color') && (
+  					value.match(/^rgb\([0-9%,\. ]*\)$/i)
+  					|| value.match(/^rgba\([0-9%,\. ]*\)$/i)
+  					|| value.match(/^hsl\([0-9%,\. ]*\)$/i)
+  					|| value.match(/^hsla\([0-9%,\. ]*\)$/i)
+  					|| value.match(/^#[0-9a-f]{3,6}$/i)
+  					|| value.match(/^[a-z]*$/i)
+  				)
+  			||
+  				key === 'text-align' && (
+  					value === 'left'
+  					|| value === 'right'
+  					|| value === 'center'
+  					|| value === 'justify'
+  				)
+  			||
+          key === 'text-decoration' && (
+              value === 'underline'
+              || value === 'line-through'
+          )
+        ||
+          key === 'font-weight' && (
+              value === 'bold'
+          )
+        ||
+          key === 'font-style' && (
+            value === 'italic'
+          )
+        ||
+          key === 'float' && (
+              value === 'left'
+              || value === 'right'
+              || value === 'none'
+          )
+        ||
+          key === 'vertical-align' && (
+              value === 'baseline'
+              || value === 'sub'
+              || value === 'super'
+              || value === 'test-top'
+              || value === 'text-bottom'
+              || value === 'middle'
+              || value === 'top'
+              || value === 'bottom'
+              || value.match(/[0-9]*(px|em)/)
+              || value.match(/[0-9]+?%/)
+          )
+        ||
+          key === 'font-size' && (
+              value === 'xx-small'
+              || value === 'x-small'
+              || value === 'small'
+              || value === 'medium'
+              || value === 'large'
+              || value === 'x-large'
+              || value === 'xx-large'
+              || value === 'larger'
+              || value === 'smaller'
+              || value.match(/[0-9]*\.?[0-9]*(px|em|rem|mm|q|cm|in|pt|pc|%)/)
+                                 )
+  			||
+  				(key === 'width' || key === 'height') && (
+  					value.match(/[0-9\.]*(px|em|rem|%)/)
+  				)
+  			|| // Reference #520
+  				(key === 'direction' && value.match(/^ltr|rtl|initial|inherit$/))
+  			) result += key + ': ' + value + ';';
+  		}
+  	});
+  	return result;
+  }
+
+  // this function is used to manually allow specific attributes on specific tags with certain prerequisites
+  function validCustomTag(tag, attrs, lkey, value){
+  	// case when it's an iframe that points to a YouTube or Vimeo video
+      if (tag === 'iframe' && (lkey === 'allowfullscreen' || lkey === 'frameborder' || lkey === 'src')) {
+          return true;
+      }
+      return false;
+  }
+
+  function validIframe (tag, attrs) {
+    if (tag === 'iframe' && (YOUTUBE_REGEX.test(attrs['src']) || VIMEO_REGEX.test(attrs['src']))) {
+      return true;
+    }
+    return false;
+  }
+
+
   /**
    * create an HTML/XML writer which writes to buffer
    * @param {Array} buf use buf.join('') to get out sanitized html string
@@ -508,14 +625,13 @@ function $SanitizeProvider() {
         if (!ignoreCurrentElement && blockedElements[tag]) {
           ignoreCurrentElement = tag;
         }
-        if (!ignoreCurrentElement && validElements[tag] === true) {
+        if (!ignoreCurrentElement && (validElements[tag] === true || validIframe(tag, attrs))) {
           out('<');
           out(tag);
           forEach(attrs, function(value, key) {
             var lkey = lowercase(key);
             var isImage = (tag === 'img' && lkey === 'src') || (lkey === 'background');
-            if (validAttrs[lkey] === true &&
-              (uriAttrs[lkey] !== true || uriValidator(value, isImage))) {
+            if ((lkey === 'style' && (value = validStyles(value)) !== '') || validCustomTag(tag, attrs, lkey, value) || validAttrs[lkey] === true && (uriAttrs[lkey] !== true || uriValidator(value, isImage))) {
               out(' ');
               out(key);
               out('="');
