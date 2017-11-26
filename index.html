@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Custom ng-sanitizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.5/angular.js" charset="utf-8"></script>
+    <script src="./angular-sanitize.js" charset="utf-8"></script>
+    <script type="text/javascript">
+      angular.module('app', ['ngSanitize'])
+             .controller('Controller', function () {
+               this.html = `
+               <h1 style="color: purple;">Hello World</h1>
+               <p>This is some random text</p>
+               <img src="https://vignette.wikia.nocookie.net/scratchpad/images/7/71/Bob-s-Burgers-bobs-burgers-18293111-1280-1024.jpg/revision/latest?cb=20130829022151"/>
+               <a href="https://www.facebook.com">Link to facebook</a>
+               <h4>YouTube video</h4>
+               <iframe width="560" height="315" src="https://www.youtube.com/embed/n93uwuXJgrw" frameborder="0" allowfullscreen></iframe>
+               `;
+             });
+    </script>
+  </head>
+  <body ng-app="app" ng-controller="Controller as $ctrl">
+    <div ng-bind-html="$ctrl.html"></div>
+  </body>
+</html>
