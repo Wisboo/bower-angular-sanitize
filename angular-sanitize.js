@@ -238,7 +238,8 @@ function $SanitizeProvider() {
 
   // Safe Void Elements - HTML5
   // http://dev.w3.org/html5/spec/Overview.html#void-elements
-  var voidElements = toMap('area,br,col,hr,img,wbr,input,iframe');
+  var voidElements = toMap('area,br,col,hr,img,wbr');
+  var iframeElement = toMap('iframe');
 
   // Elements that you can, intentionally, leave open (and which close themselves)
   // http://dev.w3.org/html5/spec/Overview.html#optional-tags
@@ -270,6 +271,7 @@ function $SanitizeProvider() {
   var blockedElements = toMap('script,style');
 
   var validElements = extend({},
+                                     iframeElement,
                                      voidElements,
                                      blockElements,
                                      inlineElements,
